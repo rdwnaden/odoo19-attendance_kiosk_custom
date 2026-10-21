@@ -8,9 +8,8 @@ import {
     useRef,
     useState,
 } from "@odoo/owl";
-
-import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
+import { registry } from "@web/core/registry";
 
 export class MyAttendanceKiosk extends Component {
     static template = "attendance_kiosk_custom.MyAttendanceKiosk";
@@ -19,13 +18,12 @@ export class MyAttendanceKiosk extends Component {
         this.orm = useService("orm");
         this.notification = useService("notification");
 
-        // The video element is created dynamically for iOS WebKit testing.
         this.videoContainerRef = useRef("videoContainer");
+        this.videoMountRef = useRef("videoMount");
         this.canvasRef = useRef("canvas");
 
         this.stream = null;
         this.cameraVideo = null;
-        this.cameraStarting = false;
 
         this.state = useState({
             loading: true,
@@ -33,17 +31,21 @@ export class MyAttendanceKiosk extends Component {
             employee_name: "",
             checked_in: false,
             check_in: false,
+
             cameraReady: false,
             photoData: "",
+
             latitude: null,
             longitude: null,
             accuracy: null,
+
+            message: "",
             error: "",
             office_configured: false,
         });
 
         onWillStart(async () => {
-            await this.refreshStatus();
+            await this.loadAttendanceStatus();
         });
 
         onWillUnmount(() => {
@@ -51,8 +53,13 @@ export class MyAttendanceKiosk extends Component {
         });
     }
 
-    async refreshStatus() {
+    // =========================================================
+    // ATTENDANCE STATUS
+    // =========================================================
+
+    async loadAttendanceStatus() {
         this.state.loading = true;
+        this.state.error = "";
 
         try {
             const result = await this.orm.call(
@@ -61,58 +68,79 @@ export class MyAttendanceKiosk extends Component {
                 []
             );
 
-            Object.assign(this.state, result);
-            this.state.error = "";
+            if (result && typeof result === "object") {
+                this.state.employee_name = result.employee_name || "";
+
+                if (typeof result.checked_in === "boolean") {
+                    this.state.checked_in = result.checked_in;
+                } else if (typeof result.is_checked_in === "boolean") {
+                    this.state.checked_in = result.is_checked_in;
+                } else if (typeof result.is_checked_out === "boolean") {
+                    this.state.checked_in = !result.is_checked_out;
+                } else if (typeof result.status === "string") {
+                    this.state.checked_in =
+                        result.status === "checked_in" ||
+                        result.status === "check_in";
+                }
+
+                this.state.check_in = result.check_in || false;
+
+                if ("office_configured" in result) {
+                    this.state.office_configured =
+                        Boolean(result.office_configured);
+                }
+            }
         } catch (error) {
+            console.error(
+                "Unable to load attendance status:",
+                error
+            );
+
             this.state.error =
-                error.message?.data?.message ||
-                error.message ||
+                this.getErrorMessage(error) ||
                 "Unable to load attendance status.";
         } finally {
             this.state.loading = false;
         }
     }
 
+    // =========================================================
+    // CAMERA
+    // =========================================================
+
     async startCamera() {
-        if (this.cameraStarting || this.state.busy) {
+        this.state.error = "";
+        this.state.message = "";
+
+        if (!navigator.mediaDevices?.getUserMedia) {
+            this.state.error =
+                "Camera access is unavailable. Use HTTPS or localhost " +
+                "and a supported browser.";
             return;
         }
 
-        this.cameraStarting = true;
-        this.state.error = "";
+        this.stopCamera();
         this.state.photoData = "";
-        this.state.cameraReady = false;
 
         try {
-            if (!navigator.mediaDevices?.getUserMedia) {
-                throw new Error(
-                    "Camera requires HTTPS and a supported browser."
-                );
-            }
-
-            this.stopCamera();
-
-            if (!this.videoContainerRef.el) {
-                throw new Error(
-                    "Camera container is unavailable. Please reload the page."
-                );
-            }
-
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: false,
-                video: {
-                    facingMode: "user",
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                },
-            });
+            const stream =
+                await navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: {
+                        facingMode: "user",
+                        width: { ideal: 1280 },
+                        height: { ideal: 960 },
+                    },
+                });
 
             this.stream = stream;
 
-            // The component may have been removed while permission was pending.
-            if (!this.videoContainerRef.el) {
-                this.stopCamera();
-                return;
+            const mount = this.videoMountRef.el;
+
+            if (!mount) {
+                throw new Error(
+                    "Camera display area was not found."
+                );
             }
 
             const video = document.createElement("video");
@@ -121,37 +149,50 @@ export class MyAttendanceKiosk extends Component {
             video.muted = true;
             video.playsInline = true;
 
-            video.setAttribute("autoplay", "");
-            video.setAttribute("muted", "");
             video.setAttribute("playsinline", "");
             video.setAttribute("webkit-playsinline", "");
+            video.setAttribute("autoplay", "");
+            video.setAttribute("muted", "");
 
             video.className = "o_kiosk_video is-visible";
-
             video.style.display = "block";
             video.style.width = "100%";
             video.style.height = "100%";
-            video.style.objectFit = "contain";
-            video.style.backgroundColor = "#111";
+            video.style.objectFit = "cover";
 
+            video.srcObject = stream;
             this.cameraVideo = video;
-            this.videoContainerRef.el.appendChild(video);
 
-            // Wait for metadata without relying on a stale Owl video reference.
-            const metadataReady = new Promise((resolve, reject) => {
-                if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+            mount.replaceChildren(video);
+
+            await new Promise((resolve, reject) => {
+                if (
+                    video.readyState >=
+                    HTMLMediaElement.HAVE_METADATA
+                ) {
                     resolve();
                     return;
                 }
 
-                const timeout = setTimeout(() => {
+                const timeout = window.setTimeout(() => {
                     cleanup();
                     reject(
-                        new Error("Camera metadata timed out. Please retry.")
+                        new Error(
+                            "Camera initialization timed out."
+                        )
                     );
                 }, 10000);
 
-                const onLoaded = () => {
+                const cleanup = () => {
+                    window.clearTimeout(timeout);
+                    video.removeEventListener(
+                        "loadedmetadata",
+                        onReady
+                    );
+                    video.removeEventListener("error", onError);
+                };
+
+                const onReady = () => {
                     cleanup();
                     resolve();
                 };
@@ -159,92 +200,113 @@ export class MyAttendanceKiosk extends Component {
                 const onError = () => {
                     cleanup();
                     reject(
-                        new Error("Unable to initialize the camera preview.")
+                        new Error(
+                            "Unable to initialize the camera video."
+                        )
                     );
                 };
 
-                const cleanup = () => {
-                    clearTimeout(timeout);
-                    video.removeEventListener("loadedmetadata", onLoaded);
-                    video.removeEventListener("error", onError);
-                };
+                video.addEventListener(
+                    "loadedmetadata",
+                    onReady,
+                    { once: true }
+                );
 
-                video.addEventListener("loadedmetadata", onLoaded, {
-                    once: true,
-                });
-
-                video.addEventListener("error", onError, {
-                    once: true,
-                });
+                video.addEventListener(
+                    "error",
+                    onError,
+                    { once: true }
+                );
             });
 
-            video.srcObject = stream;
-
             await video.play();
-            await metadataReady;
 
-            // Wait for dimensions and a presented frame.
-            await new Promise((resolve, reject) => {
-                let attempts = 0;
-
-                const checkFrame = () => {
-                    if (
-                        !this.cameraVideo ||
-                        this.cameraVideo !== video ||
-                        !this.stream
-                    ) {
-                        reject(new Error("Camera preview was interrupted."));
-                        return;
-                    }
-
-                    if (
-                        video.videoWidth > 0 &&
-                        video.videoHeight > 0
-                    ) {
-                        resolve();
-                        return;
-                    }
-
-                    attempts += 1;
-
-                    if (attempts >= 60) {
-                        reject(
-                            new Error(
-                                "No camera frame received. Please stop and retry."
-                            )
-                        );
-                        return;
-                    }
-
-                    requestAnimationFrame(checkFrame);
-                };
-
-                checkFrame();
-            });
-
-            // Trigger a WebKit layout refresh after attaching the stream.
-            video.style.visibility = "hidden";
-            void video.offsetHeight;
-            video.style.visibility = "visible";
-
-            await video.play();
+            if (!video.videoWidth || !video.videoHeight) {
+                throw new Error(
+                    "Camera is active, but no video frame is available. " +
+                    "Please try again."
+                );
+            }
 
             this.state.cameraReady = true;
-            this.state.error = "";
-
+            this.state.message =
+                "Camera is ready. You can take your photo.";
         } catch (error) {
+            console.error(
+                "Camera initialization failed:",
+                error
+            );
+
             this.stopCamera();
 
             this.state.error =
-                error.name === "NotAllowedError"
-                    ? "Camera permission denied. Allow camera access in browser settings."
-                    : error.name === "NotReadableError"
-                    ? "Camera is being used by another application. Close it and retry."
-                    : error.message ||
-                      "Could not start camera. Please retry.";
-        } finally {
-            this.cameraStarting = false;
+                this.getErrorMessage(error) ||
+                "Unable to start the camera. Check camera permissions.";
         }
+    }
+
+    capturePhoto() {
+        const video = this.cameraVideo;
+        const canvas = this.canvasRef.el;
+
+        if (
+            !video ||
+            !canvas ||
+            !video.videoWidth ||
+            !video.videoHeight
+        ) {
+            this.state.error =
+                "Camera is not ready. Please start the camera again.";
+            return;
+        }
+
+        try {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            const context = canvas.getContext("2d");
+
+            if (!context) {
+                throw new Error(
+                    "Unable to create the photo canvas."
+                );
+            }
+
+            context.drawImage(
+                video,
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
+
+            // Save a static image before stopping the live stream.
+            this.state.photoData = canvas.toDataURL(
+                "image/jpeg",
+                0.85
+            );
+
+            this.state.error = "";
+            this.state.message =
+                "Photo captured. Retake it if you are not satisfied.";
+
+            // Stop the camera but preserve the captured photo.
+            this.stopCamera();
+        } catch (error) {
+            console.error("Photo capture failed:", error);
+
+            this.state.error =
+                this.getErrorMessage(error) ||
+                "Unable to capture the photo.";
+        }
+    }
+
+    async retakePhoto() {
+        this.state.photoData = "";
+        this.state.error = "";
+        this.state.message = "";
+
+        await this.startCamera();
     }
 
     stopCamera() {
@@ -263,60 +325,22 @@ export class MyAttendanceKiosk extends Component {
             this.cameraVideo = null;
         }
 
+        const mount = this.videoMountRef?.el;
+
+        if (mount) {
+            mount.replaceChildren();
+        }
+
         this.state.cameraReady = false;
     }
 
-    capturePhoto() {
-        const video = this.cameraVideo;
-        const canvas = this.canvasRef.el;
+    // =========================================================
+    // GPS
+    // =========================================================
 
-        if (
-            !video ||
-            !canvas ||
-            !this.state.cameraReady ||
-            !video.videoWidth ||
-            !video.videoHeight
-        ) {
-            this.state.error =
-                "Camera preview is not ready. Start the camera and retry.";
-            return;
-        }
-
-        try {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-
-            const context = canvas.getContext("2d");
-
-            if (!context) {
-                throw new Error("Unable to initialize photo capture.");
-            }
-
-            context.drawImage(
-                video,
-                0,
-                0,
-                canvas.width,
-                canvas.height
-            );
-
-            this.state.photoData = canvas.toDataURL("image/jpeg", 0.82);
-            this.state.error = "";
-
-            this.notification.add("Photo captured.", {
-                type: "success",
-            });
-        } catch (error) {
-            this.state.error =
-                error.message || "Unable to capture photo.";
-        }
-    }
-
-    async getLocation() {
+    getLocation() {
         this.state.error = "";
-        this.state.latitude = null;
-        this.state.longitude = null;
-        this.state.accuracy = null;
+        this.state.message = "";
 
         if (!navigator.geolocation) {
             this.state.error =
@@ -324,42 +348,67 @@ export class MyAttendanceKiosk extends Component {
             return;
         }
 
-        try {
-            const position = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    enableHighAccuracy: true,
-                    timeout: 20000,
-                    maximumAge: 0,
-                });
-            });
+        this.state.message = "Getting GPS location...";
 
-            this.state.latitude = position.coords.latitude;
-            this.state.longitude = position.coords.longitude;
-            this.state.accuracy = position.coords.accuracy;
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                this.state.latitude =
+                    position.coords.latitude;
 
-            if (position.coords.accuracy > 100) {
+                this.state.longitude =
+                    position.coords.longitude;
+
+                this.state.accuracy =
+                    position.coords.accuracy;
+
+                this.state.error = "";
+
+                if (position.coords.accuracy > 100) {
+                    this.state.message =
+                        "GPS accuracy is low. Try again in an open area.";
+                } else {
+                    this.state.message =
+                        "GPS coordinates received. The server will validate " +
+                        "your distance from the office.";
+                }
+            },
+            (error) => {
+                console.error("GPS error:", error);
+
+                const messages = {
+                    1: "Location permission was denied. Allow location access.",
+                    2: "Your location is currently unavailable. Try again.",
+                    3: "Getting GPS location timed out. Please try again.",
+                };
+
                 this.state.error =
-                    `GPS accuracy is ${Math.round(position.coords.accuracy)} m. ` +
-                    "Retry where the GPS signal is clearer.";
-            }
-        } catch (error) {
-            const messages = {
-                1: "Location permission was denied. Allow location access in your browser.",
-                2: "Location is unavailable. Check device location services.",
-                3: "GPS request timed out. Please retry.",
-            };
+                    messages[error.code] ||
+                    "Unable to retrieve GPS location.";
 
-            this.state.error =
-                messages[error.code] ||
-                error.message ||
-                "Unable to obtain GPS location.";
-        }
+                this.state.message = "";
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 20000,
+                maximumAge: 0,
+            }
+        );
     }
 
+    // =========================================================
+    // CHECK IN / CHECK OUT
+    // =========================================================
+
     async submitAttendance() {
+        if (this.state.busy || this.state.loading) {
+            return;
+        }
+
+        this.state.error = "";
+        this.state.message = "";
+
         if (!this.state.photoData) {
-            this.state.error =
-                "A photo is required. Start the camera and capture a photo first.";
+            this.state.error = "Please capture your attendance photo first.";
             return;
         }
 
@@ -368,24 +417,29 @@ export class MyAttendanceKiosk extends Component {
             this.state.longitude === null ||
             this.state.accuracy === null
         ) {
-            this.state.error =
-                "GPS location is required. Click Get GPS Location first.";
+            this.state.error = "Please get your GPS location first.";
             return;
         }
 
         if (this.state.accuracy > 100) {
             this.state.error =
-                "GPS accuracy must be 100 meters or better.";
+                "GPS accuracy is too low. Please get your location again.";
             return;
         }
 
+        const action = this.state.checked_in ? "check_out" : "check_in";
+
         this.state.busy = true;
-        this.state.error = "";
+        this.state.message = "Submitting attendance to the server...";
 
         try {
-            const action = this.state.checked_in
-                ? "check_out"
-                : "check_in";
+            console.info("[Attendance Kiosk] Submitting:", {
+                action: action,
+                latitude: this.state.latitude,
+                longitude: this.state.longitude,
+                accuracy: this.state.accuracy,
+                photoCaptured: Boolean(this.state.photoData),
+            });
 
             const result = await this.orm.call(
                 "hr.attendance",
@@ -399,30 +453,88 @@ export class MyAttendanceKiosk extends Component {
                 ]
             );
 
-            this.notification.add(
-                result.message || "Attendance saved.",
-                { type: "success" }
-            );
+            console.info("[Attendance Kiosk] Server response:", result);
 
+            if (!result || result.success !== true) {
+                throw new Error(
+                    result?.message || "The server did not confirm attendance."
+                );
+            }
+
+            this.state.message =
+                result.message ||
+                (action === "check_in"
+                    ? "Check In recorded successfully."
+                    : "Check Out recorded successfully.");
+
+            this.notification.add(this.state.message, {
+                type: "success",
+            });
+
+            // Clear old photo and GPS after confirmed success.
             this.state.photoData = "";
             this.state.latitude = null;
             this.state.longitude = null;
             this.state.accuracy = null;
 
-            this.stopCamera();
+            // Refresh status from the server.
+            await this.loadAttendanceStatus();
 
-            await this.refreshStatus();
+            // Use the server response as a fallback if status refresh fails.
+            if (typeof result.checked_in === "boolean") {
+                this.state.checked_in = result.checked_in;
+            }
         } catch (error) {
-            this.state.error =
-                error.message?.data?.message ||
-                error.message ||
-                "Attendance was rejected.";
+            console.error("[Attendance Kiosk] Submission failed:", error);
+
+            const message = this.getErrorMessage(error);
+
+            this.state.error = message ||
+                "Attendance failed. Check the Odoo server log for details.";
+
+            this.state.message = "";
+
+            this.notification.add(this.state.error, {
+                type: "danger",
+            });
         } finally {
             this.state.busy = false;
         }
     }
+
+    getErrorMessage(error) {
+        const data = error?.data || {};
+
+        // Odoo can put the actual UserError text in data.arguments.
+        if (Array.isArray(data.arguments) && data.arguments.length) {
+            const message = data.arguments.find(
+                (item) => typeof item === "string" && item.trim()
+            );
+
+            if (message) {
+                return message;
+            }
+        }
+
+        if (typeof data.message === "string" &&
+            data.message !== "Odoo Server Error") {
+            return data.message;
+        }
+
+        if (typeof error?.message === "string" &&
+            error.message !== "RPC_ERROR") {
+            return error.message;
+        }
+
+        if (typeof error?.cause?.message === "string") {
+            return error.cause.message;
+        }
+
+        return "";
+    }
 }
 
+// Register the Client Action in Odoo.
 registry.category("actions").add(
     "attendance_kiosk_custom.my_attendance",
     MyAttendanceKiosk

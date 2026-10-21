@@ -1,5 +1,4 @@
 
-<!-- <?xml version="1.0" encoding="UTF-8"?> -->
 <templates xml:space="preserve">
 
     <t t-name="attendance_kiosk_custom.MyAttendanceKiosk">
@@ -33,23 +32,26 @@
                             </t>
 
                             <t t-else="">
-                                <div class="d-flex justify-content-between
-                                            align-items-center mb-2">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span>Employee</span>
+                                    <strong>
+                                        <t t-esc="state.employee_name || 'Current User'"/>
+                                    </strong>
+                                </div>
+
+                                <hr/>
+
+                                <div class="d-flex justify-content-between align-items-center">
                                     <span>Current Status</span>
 
-                                    <span t-if="state.attendanceStatus === 'checked_in'"
+                                    <span t-if="state.checked_in"
                                           class="badge text-bg-success">
                                         Checked In
                                     </span>
 
-                                    <span t-elif="state.attendanceStatus === 'checked_out'"
-                                          class="badge text-bg-secondary">
-                                        Checked Out
-                                    </span>
-
                                     <span t-else=""
                                           class="badge text-bg-secondary">
-                                        Not Available
+                                        Checked Out
                                     </span>
                                 </div>
                             </t>
@@ -70,7 +72,7 @@
                         </div>
                     </div>
 
-                    <!-- Camera -->
+                    <!-- Camera and photo -->
                     <div class="card shadow-sm mb-4">
                         <div class="card-body">
                             <h5 class="mb-3">Attendance Photo</h5>
@@ -78,12 +80,12 @@
                             <div class="o_kiosk_camera mb-3"
                                  t-ref="videoContainer">
 
-                                <!-- Dedicated mount point for the dynamic video.
-                                     Keep this element in the XML. -->
+                                <!-- Dynamic camera video mount -->
                                 <div t-ref="videoMount"
                                      class="o_kiosk_video_mount"/>
 
-                                <t t-if="!state.cameraReady">
+                                <!-- Camera placeholder -->
+                                <t t-if="!state.cameraReady &amp;&amp; !state.photoData">
                                     <div class="o_kiosk_camera_placeholder">
                                         <i class="fa fa-camera fa-3x mb-3"
                                            aria-hidden="true"/>
@@ -93,41 +95,49 @@
                                     </div>
                                 </t>
 
+                                <!-- Static captured photo -->
                                 <t t-if="state.photoData">
                                     <img t-att-src="state.photoData"
                                          class="o_kiosk_photo_preview"
-                                         alt="Attendance photo preview"/>
+                                         alt="Captured attendance photo"/>
                                 </t>
                             </div>
 
                             <canvas t-ref="canvas" class="d-none"/>
 
                             <div class="d-grid gap-2">
-                                <button type="button"
+
+                                <!-- Start camera -->
+                                <button t-if="!state.cameraReady &amp;&amp; !state.photoData"
+                                        type="button"
                                         class="btn btn-outline-primary"
                                         t-on-click="startCamera"
-                                        t-att-disabled="state.submitting">
+                                        t-att-disabled="state.busy">
                                     <i class="fa fa-camera me-2"
                                        aria-hidden="true"/>
                                     Start Camera
                                 </button>
 
-                                <button type="button"
+                                <!-- Capture photo -->
+                                <button t-if="state.cameraReady &amp;&amp; !state.photoData"
+                                        type="button"
                                         class="btn btn-primary"
                                         t-on-click="capturePhoto"
-                                        t-att-disabled="!state.cameraReady || state.submitting">
-                                    <i class="fa fa-picture-o me-2"
+                                        t-att-disabled="state.busy">
+                                    <i class="fa fa-camera me-2"
                                        aria-hidden="true"/>
                                     Capture Photo
                                 </button>
 
-                                <button type="button"
+                                <!-- Retake photo -->
+                                <button t-if="state.photoData"
+                                        type="button"
                                         class="btn btn-outline-secondary"
-                                        t-on-click="stopCamera"
-                                        t-att-disabled="!state.cameraReady || state.submitting">
-                                    <i class="fa fa-stop me-2"
+                                        t-on-click="retakePhoto"
+                                        t-att-disabled="state.busy">
+                                    <i class="fa fa-refresh me-2"
                                        aria-hidden="true"/>
-                                    Stop Camera
+                                    Retake Photo
                                 </button>
                             </div>
 
@@ -135,7 +145,7 @@
                                 <div class="alert alert-success mt-3 mb-0">
                                     <i class="fa fa-check-circle me-2"
                                        aria-hidden="true"/>
-                                    Photo captured successfully.
+                                    Photo captured. The live camera is stopped.
                                 </div>
                             </t>
                         </div>
@@ -146,97 +156,93 @@
                         <div class="card-body">
                             <h5 class="mb-3">GPS Location</h5>
 
-                            <div class="d-grid mb-3">
-                                <button type="button"
-                                        class="btn btn-outline-primary"
-                                        t-on-click="getLocation"
-                                        t-att-disabled="state.submitting">
-                                    <i class="fa fa-map-marker me-2"
-                                       aria-hidden="true"/>
-                                    Get GPS Location
-                                </button>
-                            </div>
+                            <button type="button"
+                                    class="btn btn-outline-primary w-100 mb-3"
+                                    t-on-click="getLocation"
+                                    t-att-disabled="state.busy">
+                                <i class="fa fa-map-marker me-2"
+                                   aria-hidden="true"/>
+                                Get GPS Location
+                            </button>
 
-                            <t t-if="state.latitude !== false &amp;&amp; state.latitude !== null">
+                            <t t-if="state.latitude !== null &amp;&amp; state.longitude !== null">
                                 <div class="small">
                                     <div class="mb-2">
                                         <strong>Latitude:</strong>
-                                        <span t-esc="state.latitude"/>
+                                        <t t-esc="state.latitude"/>
                                     </div>
 
                                     <div class="mb-2">
                                         <strong>Longitude:</strong>
-                                        <span t-esc="state.longitude"/>
+                                        <t t-esc="state.longitude"/>
                                     </div>
 
-                                    <div class="mb-2">
+                                    <div>
                                         <strong>Accuracy:</strong>
-                                        <span t-esc="state.accuracy"/>
-                                        meters
+                                        <t t-esc="state.accuracy"/> meters
                                     </div>
                                 </div>
 
-                                <div class="alert alert-success mb-0 mt-3">
-                                    <i class="fa fa-check-circle me-2"
-                                       aria-hidden="true"/>
-                                    GPS coordinates received. The server will
-                                    validate the office radius.
+                                <div class="alert alert-success mt-3 mb-0">
+                                    GPS received. The server must validate
+                                    the office radius before accepting attendance.
                                 </div>
                             </t>
 
                             <t t-else="">
                                 <p class="text-muted mb-0">
-                                    GPS location has not been retrieved yet.
+                                    GPS location has not been retrieved.
                                     Allow location access in your browser.
                                 </p>
                             </t>
                         </div>
                     </div>
 
-                    <!-- Submit attendance -->
+                    <!-- Check In / Check Out -->
                     <div class="card shadow-sm">
                         <div class="card-body">
                             <h5 class="mb-3">Submit Attendance</h5>
 
                             <p class="text-muted small">
                                 A photo and GPS location are required.
-                                Attendance is subject to server-side
-                                location validation.
+                                Your office distance is validated by the server.
                             </p>
 
-                            <div class="d-grid gap-2">
-                                <button type="button"
-                                        class="btn btn-success btn-lg"
-                                        t-on-click="checkIn"
-                                        t-att-disabled="state.submitting || state.loading || state.attendanceStatus === 'checked_in'">
-                                    <t t-if="state.submitting">
-                                        <span class="spinner-border spinner-border-sm me-2"
-                                              role="status"/>
-                                        Processing...
-                                    </t>
-                                    <t t-else="">
-                                        <i class="fa fa-sign-in me-2"
-                                           aria-hidden="true"/>
-                                        Check In
-                                    </t>
-                                </button>
+                            <!-- Only show Check In when not checked in -->
+                            <button t-if="!state.checked_in"
+                                    type="button"
+                                    class="btn btn-success btn-lg w-100"
+                                    t-on-click="submitAttendance"
+                                    t-att-disabled="state.busy || state.loading">
+                                <t t-if="state.busy">
+                                    <span class="spinner-border spinner-border-sm me-2"
+                                          role="status"/>
+                                    Processing...
+                                </t>
+                                <t t-else="">
+                                    <i class="fa fa-sign-in me-2"
+                                       aria-hidden="true"/>
+                                    Check In
+                                </t>
+                            </button>
 
-                                <button type="button"
-                                        class="btn btn-danger btn-lg"
-                                        t-on-click="checkOut"
-                                        t-att-disabled="state.submitting || state.loading || state.attendanceStatus !== 'checked_in'">
-                                    <t t-if="state.submitting">
-                                        <span class="spinner-border spinner-border-sm me-2"
-                                              role="status"/>
-                                        Processing...
-                                    </t>
-                                    <t t-else="">
-                                        <i class="fa fa-sign-out me-2"
-                                           aria-hidden="true"/>
-                                        Check Out
-                                    </t>
-                                </button>
-                            </div>
+                            <!-- Only show Check Out when already checked in -->
+                            <button t-else=""
+                                    type="button"
+                                    class="btn btn-danger btn-lg w-100"
+                                    t-on-click="submitAttendance"
+                                    t-att-disabled="state.busy || state.loading">
+                                <t t-if="state.busy">
+                                    <span class="spinner-border spinner-border-sm me-2"
+                                          role="status"/>
+                                    Processing...
+                                </t>
+                                <t t-else="">
+                                    <i class="fa fa-sign-out me-2"
+                                       aria-hidden="true"/>
+                                    Check Out
+                                </t>
+                            </button>
                         </div>
                     </div>
 
