@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form_attendance_kiosk" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.attendance.kiosk.custom</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="hr_attendance.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//app[@name='hr_attendance']" position="inside">
+                <block title="My Attendance GPS Kiosk" name="attendance_kiosk_custom_settings">
+                    <setting string="Office Latitude" help="Latitude of the office center.">
+                        <field name="attendance_kiosk_office_latitude" placeholder="-6.2000000"/>
+                    </setting>
+                    <setting string="Office Longitude" help="Longitude of the office center.">
+                        <field name="attendance_kiosk_office_longitude" placeholder="106.8166660"/>
+                    </setting>
+                    <setting string="Allowed Radius (meters)" help="Keep this at 50 meters for the requested restriction.">
+                        <field name="attendance_kiosk_office_radius"/>
+                    </setting>
+                    <div class="text-muted">
+                        A camera photo is mandatory. GPS accuracy must be 100 meters or better.
+                        Requests outside the configured radius are rejected on the server.
+                    </div>
+                </block>
+            </xpath>
+        </field>
+    </record>
+</odoo>

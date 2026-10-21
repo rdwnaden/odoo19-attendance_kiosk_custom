@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="action_my_attendance_kiosk" model="ir.actions.client">
+        <field name="name">My Attendance</field>
+        <field name="tag">attendance_kiosk_custom.my_attendance</field>
+    </record>
+    <menuitem id="menu_my_attendance_kiosk" name="My Attendance"
+              parent="hr_attendance.menu_hr_attendance_root"
+              action="action_my_attendance_kiosk" sequence="5" groups="base.group_user"/>
+</odoo>
