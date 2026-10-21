@@ -38,33 +38,114 @@ export class MyAttendanceKiosk extends Component {
     async startCamera() {
         this.state.error = "";
         this.state.photoData = "";
+        this.state.cameraReady = false;
+
         try {
             if (!navigator.mediaDevices?.getUserMedia) {
-                throw new Error("Camera requires HTTPS (or localhost) and a supported browser.");
+                throw new Error(
+                    "Camera requires HTTPS and a supported browser."
+                );
             }
+
             this.stopCamera();
-            this.stream = await navigator.mediaDevices.getUserMedia({
+
+            const stream = await navigator.mediaDevices.getUserMedia({
                 audio: false,
-                video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+                video: {
+                    facingMode: "user",
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                },
             });
-            this.state.cameraReady = true;
+
+            this.stream = stream;
+
+            // Wait until Owl has rendered the video element.
             await new Promise((resolve) => requestAnimationFrame(resolve));
-            if (this.videoRef.el) {
-                this.videoRef.el.srcObject = this.stream;
-                await this.videoRef.el.play();
+
+            const video = this.videoRef.el;
+
+            if (!video) {
+                throw new Error("Camera preview element was not found.");
             }
+
+            video.setAttribute("playsinline", "");
+            video.setAttribute("webkit-playsinline", "");
+            video.muted = true;
+            video.autoplay = true;
+
+            // Listen for metadata before attaching the stream.
+            const metadataReady = video.readyState >= 1
+                ? Promise.resolve()
+                : new Promise((resolve, reject) => {
+                    const onLoaded = () => {
+                        cleanup();
+                        resolve();
+                    };
+
+                    const onError = () => {
+                        cleanup();
+                        reject(new Error(
+                            "Unable to load camera video metadata."
+                        ));
+                    };
+
+                    const cleanup = () => {
+                        video.removeEventListener(
+                            "loadedmetadata", onLoaded
+                        );
+                        video.removeEventListener("error", onError);
+                    };
+
+                    video.addEventListener(
+                        "loadedmetadata", onLoaded, { once: true }
+                    );
+                    video.addEventListener(
+                        "error", onError, { once: true }
+                    );
+                });
+
+            video.srcObject = stream;
+
+            await video.play();
+            await metadataReady;
+
+            if (!video.videoWidth || !video.videoHeight) {
+                throw new Error(
+                    "Camera started, but no video frame is available. Please retry."
+                );
+            }
+
+            // Mark preview ready only after video playback works.
+            this.state.cameraReady = true;
+            this.state.error = "";
+
         } catch (error) {
-            this.state.cameraReady = false;
-            this.state.error = error.message || "Could not open camera. Allow camera permission and retry.";
+            this.stopCamera();
+
+            this.state.error =
+                error.name === "NotAllowedError"
+                    ? "Camera permission denied. Allow camera access in your browser."
+                    : error.name === "NotReadableError"
+                    ? "Camera is being used by another application. Close it and retry."
+                    : error.message || "Could not start camera. Please retry.";
         }
     }
 
     stopCamera() {
         if (this.stream) {
-            for (const track of this.stream.getTracks()) track.stop();
+            for (const track of this.stream.getTracks()) {
+                track.stop();
+            }
             this.stream = null;
         }
-        this.state.cameraReady = false;
+
+        const video = this.videoRef?.el;
+
+        if (video) {
+            video.pause();
+            video.srcObject = null;
+        }
     }
 
     capturePhoto() {
