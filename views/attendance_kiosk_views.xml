@@ -8,13 +8,13 @@
 
     <!-- My Attendance client action -->
     <record id="action_my_attendance_kiosk" model="ir.actions.client">
-        <field name="name">My Attendance</field>
+        <field name="name">Mobile Attendance</field>
         <field name="tag">attendance_kiosk_custom.my_attendance</field>
     </record>
 
     <!-- My Attendance menu -->
     <menuitem id="menu_my_attendance_kiosk"
-              name="My Attendance"
+              name="Mobile Attendance"
               parent="hr_attendance.menu_hr_attendance_root"
               action="action_my_attendance_kiosk"
               sequence="5"

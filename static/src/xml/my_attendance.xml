@@ -10,7 +10,7 @@
                     <!-- Header -->
                     <div class="card shadow-sm mb-4">
                         <div class="card-body text-center">
-                            <h2 class="mb-2">My Attendance</h2>
+                            <h2 class="mb-2">Mobile Attendance</h2>
                             <p class="text-muted mb-0">
                                 Take a photo and verify your location
                                 to record attendance.

@@ -1,5 +1,5 @@
 {
-    "name": "Attendance Kiosk Custom",
+    "name": "Mobile Attendance Custom",
     "version": "19.0.1.0.0",
     "category": "Human Resources/Attendances",
     "summary": "Attendance check-in/out with required camera photo and GPS geofence",

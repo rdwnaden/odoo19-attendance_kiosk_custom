@@ -6,7 +6,7 @@
         <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
         <field name="arch" type="xml">
             <xpath expr="//sheet" position="inside">
-                <group string="Attendance Kiosk Details">
+                <group string="Mobile Attendance Details">
                     <group string="Check In">
                         <field name="kiosk_in_photo"
                                widget="image"
