@@ -1,10 +1,22 @@
-<?xml version="1.0" encoding="utf-8"?>
+
 <odoo>
+    <!-- Add Employee to the existing Attendances root menu -->
+    <record id="hr_attendance.menu_hr_attendance_root" model="ir.ui.menu">
+        <field name="group_ids"
+               eval="[(4, ref('attendance_kiosk_custom.group_my_attendance_user'))]"/>
+    </record>
+
+    <!-- My Attendance client action -->
     <record id="action_my_attendance_kiosk" model="ir.actions.client">
         <field name="name">My Attendance</field>
         <field name="tag">attendance_kiosk_custom.my_attendance</field>
     </record>
-    <menuitem id="menu_my_attendance_kiosk" name="My Attendance"
+
+    <!-- My Attendance menu -->
+    <menuitem id="menu_my_attendance_kiosk"
+              name="My Attendance"
               parent="hr_attendance.menu_hr_attendance_root"
-              action="action_my_attendance_kiosk" sequence="5" groups="base.group_user"/>
+              action="action_my_attendance_kiosk"
+              sequence="5"
+              groups="attendance_kiosk_custom.group_my_attendance_user"/>
 </odoo>

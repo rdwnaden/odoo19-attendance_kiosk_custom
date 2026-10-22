@@ -4,19 +4,217 @@ import math
 
 from odoo import api, fields, models, _
 from odoo.exceptions import AccessError, UserError, ValidationError
+from odoo.http import request
 
 
 class HrAttendance(models.Model):
     _inherit = "hr.attendance"
 
-    kiosk_in_photo = fields.Binary(string="Check In Photo",attachment=True,copy=False)
-    kiosk_out_photo = fields.Binary(string="Check Out Photo",attachment=True,copy=False)
-    kiosk_in_latitude = fields.Float(string="Check In Latitude",digits=(10, 7),copy=False)
-    kiosk_in_longitude = fields.Float(string="Check In Longitude",digits=(10, 7),copy=False)
-    kiosk_out_latitude = fields.Float(string="Check Out Latitude",digits=(10, 7),copy=False)
-    kiosk_out_longitude = fields.Float(string="Check Out Longitude",digits=(10, 7),copy=False)
-    kiosk_in_accuracy = fields.Float(string="Check In GPS Accuracy (m)",copy=False)
-    kiosk_out_accuracy = fields.Float(string="Check Out GPS Accuracy (m)",copy=False)
+    # =========================================================
+    # ATTENDANCE PHOTO
+    # =========================================================
+
+    kiosk_in_photo = fields.Image(
+        string="Check In Photo",
+        max_width=1920,
+        max_height=1920,
+        attachment=True,
+        copy=False,
+    )
+
+    kiosk_out_photo = fields.Image(
+        string="Check Out Photo",
+        max_width=1920,
+        max_height=1920,
+        attachment=True,
+        copy=False,
+    )
+
+    # =========================================================
+    # GPS COORDINATES
+    # =========================================================
+
+    kiosk_in_latitude = fields.Float(
+        string="Check In Latitude",
+        digits=(10, 7),
+        copy=False,
+    )
+
+    kiosk_in_longitude = fields.Float(
+        string="Check In Longitude",
+        digits=(10, 7),
+        copy=False,
+    )
+
+    kiosk_out_latitude = fields.Float(
+        string="Check Out Latitude",
+        digits=(10, 7),
+        copy=False,
+    )
+
+    kiosk_out_longitude = fields.Float(
+        string="Check Out Longitude",
+        digits=(10, 7),
+        copy=False,
+    )
+
+    kiosk_in_accuracy = fields.Float(
+        string="Check In GPS Accuracy (m)",
+        copy=False,
+    )
+
+    kiosk_out_accuracy = fields.Float(
+        string="Check Out GPS Accuracy (m)",
+        copy=False,
+    )
+
+    # =========================================================
+    # BROWSER / DEVICE AND IP ADDRESS
+    # =========================================================
+
+    kiosk_in_browser = fields.Char(
+        string="Check In Browser / Device",
+        readonly=True,
+        copy=False,
+    )
+
+    kiosk_out_browser = fields.Char(
+        string="Check Out Browser / Device",
+        readonly=True,
+        copy=False,
+    )
+
+    kiosk_in_ip = fields.Char(
+        string="Check In IP Address",
+        readonly=True,
+        copy=False,
+    )
+
+    kiosk_out_ip = fields.Char(
+        string="Check Out IP Address",
+        readonly=True,
+        copy=False,
+    )
+
+    # =========================================================
+    # GOOGLE MAPS
+    # =========================================================
+
+    kiosk_show_in_map = fields.Boolean(
+        string="Show Check In Map",
+        default=False,
+        copy=False,
+    )
+
+    kiosk_show_out_map = fields.Boolean(
+        string="Show Check Out Map",
+        default=False,
+        copy=False,
+    )
+
+    kiosk_in_map_html = fields.Html(
+        string="Check In Map",
+        compute="_compute_kiosk_map_html",
+        sanitize=False,
+        readonly=True,
+    )
+
+    kiosk_out_map_html = fields.Html(
+        string="Check Out Map",
+        compute="_compute_kiosk_map_html",
+        sanitize=False,
+        readonly=True,
+    )
+
+    @api.depends(
+        "kiosk_in_latitude",
+        "kiosk_in_longitude",
+        "kiosk_out_latitude",
+        "kiosk_out_longitude",
+    )
+    def _compute_kiosk_map_html(self):
+        for attendance in self:
+            attendance.kiosk_in_map_html = False
+            attendance.kiosk_out_map_html = False
+
+            # Check In map: always visible when coordinates exist
+            in_lat = attendance.kiosk_in_latitude
+            in_lon = attendance.kiosk_in_longitude
+
+            if (
+                (in_lat or in_lon)
+                and -90 <= in_lat <= 90
+                and -180 <= in_lon <= 180
+            ):
+                attendance.kiosk_in_map_html = (
+                    '<iframe '
+                    'width="100%" height="160" '
+                    'style="border:0; display:block;" '
+                    'loading="lazy" '
+                    'referrerpolicy="no-referrer-when-downgrade" '
+                    'allowfullscreen '
+                    'src="https://maps.google.com/maps?'
+                    f'q={in_lat:.7f},{in_lon:.7f}&output=embed">'
+                    '</iframe>'
+                )
+
+            # Check Out map: always visible when coordinates exist
+            out_lat = attendance.kiosk_out_latitude
+            out_lon = attendance.kiosk_out_longitude
+
+            if (
+                (out_lat or out_lon)
+                and -90 <= out_lat <= 90
+                and -180 <= out_lon <= 180
+            ):
+                attendance.kiosk_out_map_html = (
+                    '<iframe '
+                    'width="100%" height="160" '
+                    'style="border:0; display:block;" '
+                    'loading="lazy" '
+                    'referrerpolicy="no-referrer-when-downgrade" '
+                    'allowfullscreen '
+                    'src="https://maps.google.com/maps?'
+                    f'q={out_lat:.7f},{out_lon:.7f}&output=embed">'
+                    '</iframe>'
+                )
+
+
+    # =========================================================
+    # REQUEST METADATA
+    # =========================================================
+
+    @api.model
+    def _kiosk_get_request_metadata(self):
+        """Get browser and client IP from the current Odoo HTTP request."""
+        try:
+            http_request = request.httprequest
+            user_agent = http_request.user_agent
+
+            browser_name = user_agent.browser or "Unknown browser"
+            browser_version = user_agent.version or ""
+            platform = user_agent.platform or ""
+
+            browser = f"{browser_name} {browser_version}".strip()
+
+            if platform:
+                browser = f"{browser} | {platform}"
+
+            # Do not trust a client-supplied X-Forwarded-For header.
+            # Configure Odoo proxy_mode and trusted reverse proxy correctly
+            # if the server is behind a reverse proxy.
+            ip_address = http_request.remote_addr or ""
+
+            return {
+                "browser": browser[:512],
+                "ip": ip_address[:45],
+            }
+
+        except (RuntimeError, AttributeError):
+            return {
+                "browser": "Unavailable",
+                "ip": "",
+            }
 
     # =========================================================
     # OFFICE CONFIGURATION
@@ -154,7 +352,7 @@ class HrAttendance(models.Model):
             ))
 
         # -----------------------------------------------------
-        # Validate photo
+        # VALIDATE PHOTO
         # -----------------------------------------------------
 
         prefix = "data:image/jpeg;base64,"
@@ -187,8 +385,10 @@ class HrAttendance(models.Model):
                 "The photo is too large. Maximum size is 8 MB."
             ))
 
+        photo_base64 = base64.b64encode(photo)
+
         # -----------------------------------------------------
-        # Validate GPS values
+        # VALIDATE GPS VALUES
         # -----------------------------------------------------
 
         try:
@@ -222,7 +422,7 @@ class HrAttendance(models.Model):
             ))
 
         # -----------------------------------------------------
-        # Validate office radius on the server
+        # VALIDATE OFFICE RADIUS ON SERVER
         # -----------------------------------------------------
 
         config = self._kiosk_get_config()
@@ -244,7 +444,13 @@ class HrAttendance(models.Model):
             ))
 
         # -----------------------------------------------------
-        # Find existing open attendance
+        # SERVER REQUEST METADATA
+        # -----------------------------------------------------
+
+        metadata = self._kiosk_get_request_metadata()
+
+        # -----------------------------------------------------
+        # FIND EXISTING OPEN ATTENDANCE
         # -----------------------------------------------------
 
         Attendance = self.sudo()
@@ -268,10 +474,14 @@ class HrAttendance(models.Model):
             attendance = Attendance.create({
                 "employee_id": employee.id,
                 "check_in": fields.Datetime.now(),
-                "kiosk_in_photo": base64.b64encode(photo),
+
+                "kiosk_in_photo": photo_base64,
                 "kiosk_in_latitude": latitude,
                 "kiosk_in_longitude": longitude,
                 "kiosk_in_accuracy": accuracy,
+
+                "kiosk_in_browser": metadata["browser"],
+                "kiosk_in_ip": metadata["ip"],
             })
 
             return {
@@ -294,10 +504,14 @@ class HrAttendance(models.Model):
 
         open_attendance.write({
             "check_out": fields.Datetime.now(),
-            "kiosk_out_photo": base64.b64encode(photo),
+
+            "kiosk_out_photo": photo_base64,
             "kiosk_out_latitude": latitude,
             "kiosk_out_longitude": longitude,
             "kiosk_out_accuracy": accuracy,
+
+            "kiosk_out_browser": metadata["browser"],
+            "kiosk_out_ip": metadata["ip"],
         })
 
         return {

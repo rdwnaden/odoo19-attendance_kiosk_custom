@@ -10,7 +10,8 @@
     "data": [
         "security/attendance_kiosk_security.xml",
         "views/attendance_kiosk_views.xml",
-        "views/res_config_settings_views.xml"
+        "views/res_config_settings_views.xml",
+        "views/hr_attendance_views.xml"
     ],
     "assets": {
         "web.assets_backend": [

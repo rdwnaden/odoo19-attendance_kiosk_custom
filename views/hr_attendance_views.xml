@@ -1,0 +1,36 @@
+
+<odoo>
+    <record id="hr_attendance_view_form_kiosk_details" model="ir.ui.view">
+        <field name="name">hr.attendance.form.kiosk.details</field>
+        <field name="model">hr.attendance</field>
+        <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="inside">
+                <group string="Attendance Kiosk Details">
+                    <group string="Check In">
+                        <field name="kiosk_in_photo"
+                               widget="image"
+                               options="{'size': [300, 300]}"/>
+                        <field name="kiosk_in_latitude" readonly="1"/>
+                        <field name="kiosk_in_longitude" readonly="1"/>
+                        <field name="kiosk_in_accuracy" readonly="1"/>
+                        <field name="kiosk_in_browser"/>
+                        <field name="kiosk_in_ip"/>
+                        <field name="kiosk_in_map_html"/>
+                    </group>
+                    <group string="Check Out">
+                        <field name="kiosk_out_photo"
+                               widget="image"
+                               options="{'size': [300, 300]}"/>
+                        <field name="kiosk_out_latitude" readonly="1"/>
+                        <field name="kiosk_out_longitude" readonly="1"/>
+                        <field name="kiosk_out_accuracy" readonly="1"/>
+                        <field name="kiosk_out_browser"/>
+                        <field name="kiosk_out_ip"/>
+                        <field name="kiosk_out_map_html"/>
+                    </group>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>
