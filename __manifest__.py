@@ -16,6 +16,7 @@
     "assets": {
         "web.assets_backend": [
             "attendance_kiosk_custom/static/src/js/my_attendance.js",
+            "attendance_kiosk_custom/static/src/js/attendance_systray_admin_only.js",
             "attendance_kiosk_custom/static/src/xml/my_attendance.xml",
             "attendance_kiosk_custom/static/src/scss/my_attendance.scss"
         ]
