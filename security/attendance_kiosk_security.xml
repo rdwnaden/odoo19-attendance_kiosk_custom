@@ -2,23 +2,23 @@
 <odoo>
     <!-- Category shown in user access rights -->
     <record id="module_category_attendance_kiosk" model="ir.module.category">
-        <field name="name">Attendance Kiosk</field>
+        <field name="name">Mobile Attendance</field>
         <field name="sequence">35</field>
     </record>
 
     <!-- Privilege shown in user settings -->
     <record id="privilege_attendance_kiosk" model="res.groups.privilege">
-        <field name="name">My Attendance</field>
-        <field name="category_id" ref="attendance_kiosk_custom.module_category_attendance_kiosk"/>
+        <field name="name">Access Role</field>
+        <field name="category_id"
+               ref="attendance_kiosk_custom.module_category_attendance_kiosk"/>
         <field name="sequence">10</field>
     </record>
 
-    <!-- Employee group -->
-
+    <!-- Work From Office: attendance restricted by office GPS radius -->
     <record id="group_my_attendance_user" model="res.groups">
-        <field name="name">Employee</field>
+        <field name="name">Work From Office</field>
         <field name="privilege_id"
-            ref="attendance_kiosk_custom.privilege_attendance_kiosk"/>
+               ref="attendance_kiosk_custom.privilege_attendance_kiosk"/>
         <field name="implied_ids" eval="[
             (4, ref('base.group_user')),
             (4, ref('hr_attendance.group_hr_attendance_own_reader'))
@@ -26,5 +26,15 @@
         <field name="sequence">10</field>
     </record>
 
-
+    <!-- Work From Anywhere: same attendance menu, no office radius restriction -->
+    <record id="group_work_from_anywhere" model="res.groups">
+        <field name="name">Work From Anywhere</field>
+        <field name="privilege_id"
+               ref="attendance_kiosk_custom.privilege_attendance_kiosk"/>
+        <field name="implied_ids" eval="[
+            (4, ref('base.group_user')),
+            (4, ref('hr_attendance.group_hr_attendance_own_reader'))
+        ]"/>
+        <field name="sequence">20</field>
+    </record>
 </odoo>

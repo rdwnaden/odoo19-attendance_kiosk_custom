@@ -137,7 +137,7 @@ class HrAttendance(models.Model):
             attendance.kiosk_in_map_html = False
             attendance.kiosk_out_map_html = False
 
-            # Check In map: always visible when coordinates exist
+            # Check In map
             in_lat = attendance.kiosk_in_latitude
             in_lon = attendance.kiosk_in_longitude
 
@@ -158,7 +158,7 @@ class HrAttendance(models.Model):
                     '</iframe>'
                 )
 
-            # Check Out map: always visible when coordinates exist
+            # Check Out map
             out_lat = attendance.kiosk_out_latitude
             out_lon = attendance.kiosk_out_longitude
 
@@ -178,7 +178,6 @@ class HrAttendance(models.Model):
                     f'q={out_lat:.7f},{out_lon:.7f}&output=embed">'
                     '</iframe>'
                 )
-
 
     # =========================================================
     # REQUEST METADATA
@@ -201,8 +200,6 @@ class HrAttendance(models.Model):
                 browser = f"{browser} | {platform}"
 
             # Do not trust a client-supplied X-Forwarded-For header.
-            # Configure Odoo proxy_mode and trusted reverse proxy correctly
-            # if the server is behind a reverse proxy.
             ip_address = http_request.remote_addr or ""
 
             return {
@@ -217,6 +214,24 @@ class HrAttendance(models.Model):
             }
 
     # =========================================================
+    # ROLE: WORK FROM ANYWHERE
+    # =========================================================
+
+    @api.model
+    def _kiosk_is_work_from_anywhere(self):
+        """
+        Work From Anywhere:
+        - Skip office radius validation.
+        - Continue requiring valid GPS coordinates and accuracy.
+        - Continue requiring the camera photo.
+
+        Work From Office users remain subject to office radius validation.
+        """
+        return self.env.user.has_group(
+            "attendance_kiosk_custom.group_work_from_anywhere"
+        )
+
+    # =========================================================
     # OFFICE CONFIGURATION
     # =========================================================
 
@@ -228,7 +243,9 @@ class HrAttendance(models.Model):
         lon = company.attendance_kiosk_office_longitude
         radius = company.attendance_kiosk_office_radius or 50.0
 
-        if not lat and not lon:
+        # Check None explicitly so latitude/longitude equal to zero
+        # are not incorrectly treated as missing.
+        if lat is False or lat is None or lon is False or lon is None:
             raise UserError(_(
                 "Office GPS coordinates are not configured. "
                 "Ask an Attendance administrator."
@@ -239,7 +256,10 @@ class HrAttendance(models.Model):
         radius = float(radius)
 
         if not (
-            -90 <= lat <= 90
+            math.isfinite(lat)
+            and math.isfinite(lon)
+            and math.isfinite(radius)
+            and -90 <= lat <= 90
             and -180 <= lon <= 180
             and 1 <= radius <= 5000
         ):
@@ -256,13 +276,18 @@ class HrAttendance(models.Model):
 
     @api.model
     def _kiosk_configured(self):
-        """Use the same company fields as the actual GPS validation."""
+        """Check whether office GPS coordinates are configured."""
         company = self.env.company
 
         lat = company.attendance_kiosk_office_latitude
         lon = company.attendance_kiosk_office_longitude
 
-        return bool(lat or lon)
+        return (
+            lat is not False
+            and lat is not None
+            and lon is not False
+            and lon is not None
+        )
 
     @api.model
     def _kiosk_distance_meters(self, lat1, lon1, lat2, lon2):
@@ -320,6 +345,7 @@ class HrAttendance(models.Model):
                 if attendance else False
             ),
             "office_configured": self._kiosk_configured(),
+            "work_from_anywhere": self._kiosk_is_work_from_anywhere(),
         }
 
     # =========================================================
@@ -353,6 +379,7 @@ class HrAttendance(models.Model):
 
         # -----------------------------------------------------
         # VALIDATE PHOTO
+        # Camera photo remains mandatory for both roles.
         # -----------------------------------------------------
 
         prefix = "data:image/jpeg;base64,"
@@ -389,6 +416,7 @@ class HrAttendance(models.Model):
 
         # -----------------------------------------------------
         # VALIDATE GPS VALUES
+        # GPS is required for both roles to record coordinates.
         # -----------------------------------------------------
 
         try:
@@ -423,25 +451,29 @@ class HrAttendance(models.Model):
 
         # -----------------------------------------------------
         # VALIDATE OFFICE RADIUS ON SERVER
+        # Work From Anywhere skips ONLY this restriction.
         # -----------------------------------------------------
 
-        config = self._kiosk_get_config()
+        is_work_from_anywhere = self._kiosk_is_work_from_anywhere()
 
-        distance = self._kiosk_distance_meters(
-            latitude,
-            longitude,
-            config["latitude"],
-            config["longitude"],
-        )
+        if not is_work_from_anywhere:
+            config = self._kiosk_get_config()
 
-        if distance > config["radius"]:
-            raise UserError(_(
-                "Attendance rejected: you are approximately "
-                "%(distance).1f meters from the office. "
-                "You must be within %(radius).1f meters.",
-                distance=distance,
-                radius=config["radius"],
-            ))
+            distance = self._kiosk_distance_meters(
+                latitude,
+                longitude,
+                config["latitude"],
+                config["longitude"],
+            )
+
+            if distance > config["radius"]:
+                raise UserError(_(
+                    "Attendance rejected: you are approximately "
+                    "%(distance).1f meters from the office. "
+                    "You must be within %(radius).1f meters.",
+                    distance=distance,
+                    radius=config["radius"],
+                ))
 
         # -----------------------------------------------------
         # SERVER REQUEST METADATA
